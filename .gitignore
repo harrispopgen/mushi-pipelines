@@ -127,3 +127,14 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# nextflow builds
+*/work
+*/output
+*/.nextflow*
+*/report.html*
+*/dag.html*
+*/timeline.html*
+
+
+.DS_Store
