@@ -8,27 +8,25 @@ import numpy as np
 ksfs = pickle.load(open('ksfs.pkl', 'rb'))
 mu0 = pickle.load(open('mu0.pkl', 'rb'))
 
-change_points = np.logspace(0, np.log10(100000), ${params.n_change_points})
+convergence_params = dict(tol=0, max_iter=${params.max_iter})
+trend_kwargs = dict(max_iter=${params.trend_max_iter})
 
-alpha_params = dict(alpha_tv=${alpha_tv}, alpha_spline=${alpha_spline}, alpha_ridge=${alpha_ridge})
-beta_params = dict(beta_tv=${beta_tv}, beta_spline=${beta_spline}, beta_ridge=${beta_ridge})
-convergence_params = dict(tol=1e-16, max_iter=2000)
+alpha_trend = ((0, ${alpha_0}), (1, ${alpha_1}))
+beta_trend = ((0, ${beta_0}), (1, ${beta_1}))
 
-if ${freq_mask}:
-    clip_low = 0
-    clip_high = 20
-    freq_mask = np.array([True if (clip_low <= i < ksfs.n - clip_high - 1) else False
-                          for i in range(ksfs.n - 1)])
-else:
-    freq_mask = None
+ksfs.infer_eta(mu0,
+               *alpha_trend,
+               ridge_penalty=${alpha_ridge},
+               loss='prf',
+               folded=${folded},
+               pts=${params.pts}, ta=${params.ta},
+               trend_kwargs=trend_kwargs,
+               **convergence_params, verbose=True)
 
-ksfs.infer_history(change_points, mu0, loss='prf',
-                   infer_mu=False, folded=${folded},
-                   mask=(None if ${folded} else freq_mask),
-                   **alpha_params, **convergence_params)
-ksfs.infer_history(change_points, mu0, loss='prf',
-                   infer_eta=False,
-                   mask=freq_mask,
-                   **beta_params, **convergence_params)
+ksfs.infer_mush(*beta_trend,
+                ridge_penalty=${beta_ridge},
+                loss='prf',
+                trend_kwargs=trend_kwargs,
+                **convergence_params, verbose=True)
 
-pickle.dump([alpha_params, beta_params, ksfs], open('dat.pkl', 'wb'))
+pickle.dump([alpha_trend, beta_trend, ksfs], open('dat.pkl', 'wb'))

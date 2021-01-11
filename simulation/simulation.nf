@@ -2,8 +2,12 @@
 
 params.outdir = "output"
 
-params.n_change_points = 100
+params.pts = 100
+params.ta = 100000
 params.n_haplotypes = 200
+params.max_iter = 300
+params.r = 0.01
+params.trend_max_iter = 20
 
 process histories {
 
@@ -30,7 +34,7 @@ process histories {
 
   # Time grid
 
-  change_points = np.logspace(0, np.log10(100000), ${params.n_change_points})
+  change_points = np.logspace(0, np.log10(${params.ta}), ${params.pts})
   t = np.concatenate((np.array([0]), change_points))
 
 
@@ -104,6 +108,7 @@ process ksfs {
   import msprime
   import numpy as np
   from matplotlib import pyplot as plt
+  from numpy.random import binomial
 
   # Load histories
   eta = pickle.load(open('eta.pkl', 'rb'))
@@ -149,6 +154,12 @@ process ksfs {
           j = np.random.choice(mu.Z.shape[1], p=(mutation_rate / mutation_rate_total))
           X[i, j] += 1
 
+  X_misid = binomial(X, ${params.r})
+  # assume first two mutation types are misidentification partners
+  X[:, 0] = X[:, 0] - X_misid[:, 0] + X_misid[::-1, 1]
+  X[:, 1] = X[:, 1] - X_misid[:, 1] + X_misid[::-1, 0]
+  X[:, 2:] = X[:, 2:] - X_misid[:, 2:] + X_misid[::-1, 2:]
+
   ksfs = mushi.kSFS(X=X)
 
 
@@ -190,12 +201,12 @@ process ksfs {
   """
 }
 
-alpha_tv = [0] + (0..4.5).by(0.5).collect{ 10**it }
-alpha_spline = [0] + (1..5.5).by(0.5).collect{ 10**it }
+alpha_0 = [0] + (0..3.5).by(0.5).collect{ 10**it }
+alpha_1 = [0] + (0..4).by(0.5).collect{ 10**it }
 alpha_ridge = 1e-4
 
-beta_tv = 1e2
-beta_spline = 1e3
+beta_0 = 1e2
+beta_1 = 1e2
 beta_ridge = 1e-4
 
 folded = 'False'
@@ -205,19 +216,19 @@ process eta_sweep {
 
   executor 'sge'
   memory '1 GB'
-  time '5m'
+  time '1h'
   scratch true
   conda "${CONDA_PREFIX}/envs/simulation"
-  publishDir "$params.outdir/eta_sweep/${alpha_tv}_${alpha_spline}", mode: 'copy'
+  publishDir "$params.outdir/eta_sweep/${alpha_0}_${alpha_1}", mode: 'copy'
 
   input:
   file 'ksfs.pkl' from ksfs_ch
   file 'mu0.pkl' from mu0_ch
-  each alpha_tv from alpha_tv
-  each alpha_spline from alpha_spline
+  each alpha_0 from alpha_0
+  each alpha_1 from alpha_1
   val alpha_ridge
-  val beta_tv
-  val beta_spline
+  val beta_0
+  val beta_1
   val beta_ridge
   val folded
   val freq_mask
@@ -229,31 +240,31 @@ process eta_sweep {
   template 'infer.py'
 }
 
-alpha_tv = 2e0
-alpha_spline = 1e3
+alpha_0 = 1e2
+alpha_1 = 1e3
 alpha_ridge = 1e-4
 
-beta_tv = [0] + (0..4.5).by(0.5).collect{ 10**it }
-beta_spline = [0] + (1..5.5).by(0.5).collect{ 10**it }
+beta_0 = [0] + (0..2.5).by(0.5).collect{ 10**it }
+beta_1 = [0] + (0..3).by(0.5).collect{ 10**it }
 beta_ridge = 1e-4
 
 process mu_sweep {
 
   executor 'sge'
   memory '1 GB'
-  time '5m'
+  time '1h'
   scratch true
   conda "${CONDA_PREFIX}/envs/simulation"
-  publishDir "$params.outdir/mu_sweep/${beta_tv}_${beta_spline}", mode: 'copy'
+  publishDir "$params.outdir/mu_sweep/${beta_0}_${beta_1}", mode: 'copy'
 
   input:
   file 'ksfs.pkl' from ksfs_ch
   file 'mu0.pkl' from mu0_ch
-  val alpha_tv
-  val alpha_spline
+  val alpha_0
+  val alpha_1
   val alpha_ridge
-  each beta_tv from beta_tv
-  each beta_spline from beta_spline
+  each beta_0 from beta_0
+  each beta_1 from beta_1
   val beta_ridge
   val folded
   val freq_mask
@@ -265,50 +276,9 @@ process mu_sweep {
   template 'infer.py'
 }
 
-p_misid = [0.00, 0.01, 0.05, 0.10]
 
-process ksfs_misid {
-
-  executor 'sge'
-  memory '100 MB'
-  time '5m'
-  scratch true
-  conda "${CONDA_PREFIX}/envs/simulation"
-
-  input:
-  file 'ksfs.pkl' from ksfs_ch
-  each p_misid from p_misid
-
-  output:
-  tuple p_misid, 'ksfs_misid.pkl' into ksfs_misid_ch
-
-  """
-  #!/usr/bin/env python
-
-  import pickle
-  import mushi
-  from numpy.random import binomial
-
-  # Load ksfs and true histories
-  ksfs = pickle.load(open('ksfs.pkl', 'rb'))
-  X = ksfs.X
-  X_misid = binomial(X, ${p_misid})
-  # assume first two mutation types are misidentification partners
-  X[:, 0] = X[:, 0] - X_misid[:, 0] + X_misid[::-1, 1]
-  X[:, 1] = X[:, 1] - X_misid[:, 1] + X_misid[::-1, 0]
-  X[:, 2:] = X[:, 2:] - X_misid[:, 2:] + X_misid[::-1, 2:]
-  ksfs = mushi.kSFS(X=X)
-
-  pickle.dump(ksfs, open('ksfs_misid.pkl', 'wb'))
-  """
-}
-
-alpha_tv = 2e0
-alpha_spline = 1e3
-alpha_ridge = 1e-4
-
-beta_tv = 1e2
-beta_spline = 1e3
+beta_0 = 1e2
+beta_1 = 1e2
 beta_ridge = 1e-4
 
 folded = ['False', 'True']
@@ -318,20 +288,20 @@ process mush {
 
   executor 'sge'
   memory '1 GB'
-  time '10m'
+  time '1h'
   scratch true
   conda "${CONDA_PREFIX}/envs/simulation"
-  publishDir "$params.outdir/mush/folded_${folded}/${p_misid}", mode: 'copy'
+  publishDir "$params.outdir/mush/folded_${folded}", mode: 'copy'
 
   input:
-  tuple p_misid, 'ksfs.pkl' from ksfs_misid_ch
+  file 'ksfs.pkl' from ksfs_ch
   each folded from folded
   file 'mu0.pkl' from mu0_ch
-  val alpha_tv
-  val alpha_spline
+  val alpha_0
+  val alpha_1
   val alpha_ridge
-  val beta_tv
-  val beta_spline
+  val beta_0
+  val beta_1
   val beta_ridge
   val freq_mask
 
