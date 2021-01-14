@@ -32,30 +32,48 @@ foo, bar = ksfs.mutation_types.reindex(sorted_triplets)
 ksfs.mutation_types = foo
 ksfs.X = ksfs.X[:, bar]
 
-masked_genome_size = pd.read_csv('masked_size.tsv', sep='\t', header=None, index_col=0, names=('count',))
+masked_genome_size = pd.read_csv('masked_size.tsv', sep='\t', header=None,
+                                 index_col=0, names=('count',))
 
-u = 1.25e-8
+u = ${params.mut_rate}
 mu0 = u * masked_genome_size['count'].sum()
 
-if not ${folded}:
-    clip_low = 0
-    clip_high = 10
-    freq_mask = np.array([True if (clip_low <= i < ksfs.n - clip_high - 1) else False
-                          for i in range(ksfs.n - 1)])
-else:
-    freq_mask = None
+convergence_params = dict(tol=0, max_iter=${params.max_iter})
+trend_kwargs = dict(max_iter=${params.trend_max_iter})
 
-convergence_params = dict(tol=1e-16, max_iter=2000)
+if ${k_eta2} is None:
+    alpha_trend = ((${k_eta1}, ${lambda_eta1}),)
+else:
+    alpha_trend = ((${k_eta1}, ${lambda_eta1}), (${k_eta2}, ${lambda_eta2}))
+
 dat = []
 if eta is None:
-    alpha_params = dict(alpha_tv=${alpha_tv}, alpha_spline=${alpha_spline}, alpha_ridge=${alpha_ridge})
-    ksfs.infer_history(change_points, mu0, loss='prf', mask=freq_mask,
-                       eta_ref=eta_ref, infer_mu=False, folded=${folded},
-                       **alpha_params, **convergence_params)
-    dat.append(alpha_params)
-beta_params = dict(beta_tv=${beta_tv}, beta_spline=${beta_spline}, beta_ridge=${beta_ridge}, beta_rank=${beta_rank})
-ksfs.infer_history(change_points, mu0, loss='prf', mask=freq_mask,
-                   mu_ref=mu_ref, infer_eta=False, eta=eta,
-                   **beta_params, **convergence_params)
-dat += [beta_params, ksfs, '${population}']
+    ksfs.infer_eta(mu0,
+                   *alpha_trend,
+                   folded=${folded},
+                   ridge_penalty=${alpha_ridge},
+                   eta_ref=eta_ref,
+                   loss='prf',
+                   pts=${params.pts}, ta=${params.ta},
+                   trend_kwargs=trend_kwargs,
+                   **convergence_params, verbose=True)
+    dat.append(alpha_trend)
+else:
+    ksfs.set_eta(eta)
+    ksfs.mu0 = mu0
+
+
+if ${k_mu2} is None:
+    beta_trend = ((${k_mu1}, ${lambda_mu1}),)
+else:
+    beta_trend = ((${k_mu1}, ${lambda_mu1}), (${k_mu2}, ${lambda_mu2}))
+
+ksfs.infer_mush(*beta_trend,
+                ridge_penalty=${beta_ridge},
+                mu_ref=mu_ref,
+                loss='prf',
+                trend_kwargs=trend_kwargs,
+                **convergence_params, verbose=True)
+dat += [beta_trend, ksfs, '${population}']
+
 pickle.dump(dat, open('dat.pkl', 'wb'))
