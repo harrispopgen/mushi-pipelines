@@ -550,7 +550,7 @@ process mush {
   val beta_ridge
   val beta_rank
   val ref_pop
-  file 'dat.ref.pkl' from mush_ref_ch
+  // file 'dat.ref.pkl' from mush_ref_ch
   val folded
   val eta
 
@@ -627,7 +627,7 @@ process mush_folded {
   val beta_ridge
   val beta_rank
   val ref_pop
-  file 'dat.ref.pkl' from mush_ref_folded_ch
+  // file 'dat.ref.pkl' from mush_ref_folded_ch
   val folded
   val eta
 
