@@ -12,7 +12,7 @@ params.mut_rate = 1.25e-8
 params.pts = 200
 params.ta = 200000
 params.max_iter = 1000
-params.trend_max_iter = 30
+params.trend_max_iter = 100
 
 chromosomes = 1..22
 
@@ -251,10 +251,8 @@ process eta_sweep {
 
 k_eta1 = 0
 lambda_eta1 = 1e2
-k_eta2 = 3
-lambda_eta2 = 1e1
-
-alpha_ridge = 1e-4
+k_eta2 = 2
+lambda_eta2 = 1e-2
 
 k_mu1 = [0, 1, 2, 3]
 lambda_mu1 = [0] + (0..4).by(0.25).collect { 10**it }
@@ -294,319 +292,348 @@ process mu_sweep {
   script:
   template 'infer.py'
 }
-//
-// alpha_0 = 1e2
-// alpha_3 = 1e3
-//
-// beta_0 = 1e2
-// beta_1 = 0
-//
-// process europulse {
-//
-//   executor 'sge'
-//   memory '500 MB'
-//   time '1d'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//   publishDir "$params.outdir/europulse_mushi/${population}", mode: 'copy'
-//
-//   input:
-//   tuple population, 'ksf.tsv' from ksfs_total_ch_3.filter { it[0].split('_')[0] == 'EUR' }
-//   file 'masked_size.tsv' from masked_size_total_ch
-//   val alpha_0
-//   val alpha_3
-//   val alpha_ridge
-//   val beta_0
-//   val beta_1
-//   val beta_ridge
-//   val beta_rank
-//   val ref_pop
-//   val folded
-//   val eta
-//
-//   output:
-//   file 'dat.pkl' into europulse_ch
-//
-//   script:
-//   template 'infer.py'
-// }
-//
-// process eta_Tennessen {
-//   executor 'sge'
-//   memory '100 MB'
-//   time '1h'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//
-//   output:
-//   file 'eta.pkl' into eta_Tennessen_ch
-//
-//   """
-//   #! /usr/bin/env python
-//
-//   import numpy as np
-//   import stdpopsim
-//   import mushi
-//   import pickle
-//
-//   species = stdpopsim.get_species("HomSap")
-//   model = species.get_demographic_model("OutOfAfrica_2T12")
-//   ddb = model.get_demography_debugger()
-//   change_points = np.logspace(np.log10(1), np.log10(200000), 200)
-//   steps = np.concatenate((np.array([0]), change_points))
-//   eta = mushi.eta(change_points,
-//                   1 / ddb.coalescence_rate_trajectory(steps=steps,
-//                                                       num_samples=[0, 2],
-//                                                       double_step_validation=False)[0])
-//   pickle.dump(eta, open('eta.pkl', 'wb'))
-//   """
-// }
-//
-// relate_files_ch = populations_ch_2.filter { it.split('_')[0] == 'EUR' }
-//   .map { [it,
-//           file("Relate_histories/relate_${it.split('_')[1]}.coal")] }
-//
-// process eta_Relate {
-//
-//   executor 'sge'
-//   memory '100 MB'
-//   time '1h'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//
-//   input:
-//   tuple pop, 'file.coal' from relate_files_ch
-//
-//   output:
-//   tuple pop, 'eta.pkl' into eta_Relate_ch
-//
-//   """
-//   #! /usr/bin/env python
-//
-//   import numpy as np
-//   import mushi
-//   import scipy
-//   import pickle
-//
-//   pop = '${pop}'.split('_')[1]
-//
-//   with open('file.coal') as f:
-//       f.readline()
-//       t = np.fromstring(f.readline(), sep=' ')
-//       with np.errstate(divide='ignore'):
-//           y = 1 / np.fromstring(f.readline(), sep=' ')[2:]
-//   change_points = np.logspace(np.log10(1), np.log10(200000), 200)
-//   t2 = np.concatenate((np.array([0]), change_points, np.array([np.inf])))
-//   eta = mushi.eta(change_points, scipy.interpolate.interp1d(t, y, kind='nearest')(t2[:-1]))
-//
-//   pickle.dump(eta, open('eta.pkl', 'wb'))
-//   """
-// }
-//
-// eta = 'True'
-//
-// process europulse_Tennessen {
-//
-//   executor 'sge'
-//   memory '500 MB'
-//   time '1d'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//   publishDir "$params.outdir/europulse_Tennessen/${population}", mode: 'copy'
-//
-//   input:
-//   tuple population, 'ksf.tsv' from ksfs_total_ch_4.filter { it[0].split('_')[0] == 'EUR' }
-//   file 'masked_size.tsv' from masked_size_total_ch
-//   file 'eta.pkl' from eta_Tennessen_ch
-//   val alpha_0
-//   val alpha_3
-//   val alpha_ridge
-//   val beta_0
-//   val beta_1
-//   val beta_ridge
-//   val beta_rank
-//   val ref_pop
-//   val folded
-//   val eta
-//
-//   output:
-//   file 'dat.pkl' into europulse_Tennessen_ch
-//
-//   script:
-//   template 'infer.py'
-// }
-//
-// ksfs_total_ch_EUR = ksfs_total_ch_5.filter { it[0].split('_')[0] == 'EUR' }
-//
-// process europulse_Relate {
-//
-//   executor 'sge'
-//   memory '500 MB'
-//   time '1d'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//   publishDir "$params.outdir/europulse_Relate/${population}", mode: 'copy'
-//
-//   input:
-//   tuple population, 'ksf.tsv', 'eta.pkl' from ksfs_total_ch_EUR.join(eta_Relate_ch)
-//   file 'masked_size.tsv' from masked_size_total_ch
-//   val alpha_0
-//   val alpha_3
-//   val alpha_ridge
-//   val beta_0
-//   val beta_1
-//   val beta_ridge
-//   val beta_rank
-//   val ref_pop
-//   val folded
-//   val eta
-//
-//   output:
-//   file 'dat.pkl' into europulse_Relate_ch
-//
-//   script:
-//   template 'infer.py'
-// }
-//
-// eta = 'False'
-//
-// // same as above, but all populations, ancestral fusion to YRI, and softer mutation spectrum history
-// alpha_0 = 1e2
-// alpha_3 = 1e3
-//
-// beta_0 = 1e2
-// beta_1 = 1e2
-// beta_rank=1e2
-//
-// process mush_ref {
-//
-//   executor 'sge'
-//   memory '500 MB'
-//   time '1d'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//   publishDir "$params.outdir/mush/${population}", mode: 'copy'
-//
-//   input:
-//   tuple population, 'ksf.tsv' from ksfs_total_ch_6.first { it[0] == 'AFR_YRI' }
-//   file 'masked_size.tsv' from masked_size_total_ch
-//   val alpha_0
-//   val alpha_3
-//   val alpha_ridge
-//   val beta_0
-//   val beta_1
-//   val beta_ridge
-//   val beta_rank
-//   val ref_pop
-//   val folded
-//   val eta
-//
-//   output:
-//   file 'dat.pkl' into mush_ref_ch
-//
-//   script:
-//   template 'infer.py'
-// }
-//
+
+k_mu1 = 0
+lambda_mu1 = 1e2
+k_mu2 = 'None'
+lambda_mu2 = 'None'
+
+process europulse {
+
+  executor 'sge'
+  memory '500 MB'
+  time '1d'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/europulse_mushi/${population}", mode: 'copy'
+
+  input:
+  tuple population, 'ksf.tsv' from ksfs_total_ch_3.filter { it[0].split('_')[0] == 'EUR' }
+  file 'masked_size.tsv' from masked_size_total_ch
+  val k_eta1
+  val lambda_eta1
+  val k_eta2
+  val lambda_eta2
+  val alpha_ridge
+  val k_mu1
+  val lambda_mu1
+  val k_mu2
+  val lambda_mu2
+  val beta_ridge
+  val beta_rank
+  val ref_pop
+  val folded
+  val eta
+
+  output:
+  file 'dat.pkl' into europulse_ch
+
+  script:
+  template 'infer.py'
+}
+
+process eta_Tennessen {
+  executor 'sge'
+  memory '100 MB'
+  time '1h'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+
+  output:
+  file 'eta.pkl' into eta_Tennessen_ch
+
+  """
+  #! /usr/bin/env python
+
+  import numpy as np
+  import stdpopsim
+  import mushi
+  import pickle
+
+  species = stdpopsim.get_species("HomSap")
+  model = species.get_demographic_model("OutOfAfrica_2T12")
+  ddb = model.get_demography_debugger()
+  change_points = np.logspace(np.log10(1), np.log10(200000), 200)
+  steps = np.concatenate((np.array([0]), change_points))
+  eta = mushi.eta(change_points,
+                  1 / ddb.coalescence_rate_trajectory(steps=steps,
+                                                      num_samples=[0, 2],
+                                                      double_step_validation=False)[0])
+  pickle.dump(eta, open('eta.pkl', 'wb'))
+  """
+}
+
+relate_files_ch = populations_ch_2.filter { it.split('_')[0] == 'EUR' }
+  .map { [it,
+          file("Relate_histories/relate_${it.split('_')[1]}.coal")] }
+
+process eta_Relate {
+
+  executor 'sge'
+  memory '100 MB'
+  time '1h'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+
+  input:
+  tuple pop, 'file.coal' from relate_files_ch
+
+  output:
+  tuple pop, 'eta.pkl' into eta_Relate_ch
+
+  """
+  #! /usr/bin/env python
+
+  import numpy as np
+  import mushi
+  import scipy
+  import pickle
+
+  pop = '${pop}'.split('_')[1]
+
+  with open('file.coal') as f:
+      f.readline()
+      t = np.fromstring(f.readline(), sep=' ')
+      with np.errstate(divide='ignore'):
+          y = 1 / np.fromstring(f.readline(), sep=' ')[2:]
+  change_points = np.logspace(np.log10(1), np.log10(200000), 200)
+  t2 = np.concatenate((np.array([0]), change_points, np.array([np.inf])))
+  eta = mushi.eta(change_points, scipy.interpolate.interp1d(t, y, kind='nearest')(t2[:-1]))
+
+  pickle.dump(eta, open('eta.pkl', 'wb'))
+  """
+}
+
+eta = 'True'
+
+process europulse_Tennessen {
+
+  executor 'sge'
+  memory '500 MB'
+  time '1d'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/europulse_Tennessen/${population}", mode: 'copy'
+
+  input:
+  tuple population, 'ksf.tsv' from ksfs_total_ch_4.filter { it[0].split('_')[0] == 'EUR' }
+  file 'masked_size.tsv' from masked_size_total_ch
+  file 'eta.pkl' from eta_Tennessen_ch
+  val k_eta1
+  val lambda_eta1
+  val k_eta2
+  val lambda_eta2
+  val alpha_ridge
+  val k_mu1
+  val lambda_mu1
+  val k_mu2
+  val lambda_mu2
+  val beta_ridge
+  val beta_rank
+  val ref_pop
+  val folded
+  val eta
+
+  output:
+  file 'dat.pkl' into europulse_Tennessen_ch
+
+  script:
+  template 'infer.py'
+}
+
+ksfs_total_ch_EUR = ksfs_total_ch_5.filter { it[0].split('_')[0] == 'EUR' }
+
+process europulse_Relate {
+
+  executor 'sge'
+  memory '500 MB'
+  time '1d'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/europulse_Relate/${population}", mode: 'copy'
+
+  input:
+  tuple population, 'ksf.tsv', 'eta.pkl' from ksfs_total_ch_EUR.join(eta_Relate_ch)
+  file 'masked_size.tsv' from masked_size_total_ch
+  val k_eta1
+  val lambda_eta1
+  val k_eta2
+  val lambda_eta2
+  val alpha_ridge
+  val k_mu1
+  val lambda_mu1
+  val k_mu2
+  val lambda_mu2
+  val beta_ridge
+  val beta_rank
+  val ref_pop
+  val folded
+  val eta
+
+  output:
+  file 'dat.pkl' into europulse_Relate_ch
+
+  script:
+  template 'infer.py'
+}
+
+eta = 'False'
+
+// same as above, but all populations, ancestral fusion to YRI, rank penalty, and softer mutation spectrum history
+k_mu1 = 0
+lambda_mu1 = 5e1
+k_mu2 = 3
+lambda_mu2 = 1e-2
+
+// NOTE: experimenting with no rank penalty!!!!!!
+beta_rank = 1e2
+
+process mush_ref {
+
+  executor 'sge'
+  memory '500 MB'
+  time '1d'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/mush/${population}", mode: 'copy'
+
+  input:
+  tuple population, 'ksf.tsv' from ksfs_total_ch_6.first { it[0] == 'AFR_YRI' }
+  file 'masked_size.tsv' from masked_size_total_ch
+  val k_eta1
+  val lambda_eta1
+  val k_eta2
+  val lambda_eta2
+  val alpha_ridge
+  val k_mu1
+  val lambda_mu1
+  val k_mu2
+  val lambda_mu2
+  val beta_ridge
+  val beta_rank
+  val ref_pop
+  val folded
+  val eta
+
+  output:
+  file 'dat.pkl' into mush_ref_ch
+
+  script:
+  template 'infer.py'
+}
+
+// NOTE: experimenting with no fusion!!!!!!
 // alpha_ridge = 1e4
 // beta_ridge = 1e4
 // ref_pop = 'True'
-// process mush {
-//
-//   executor 'sge'
-//   memory '500 MB'
-//   time '1d'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//   publishDir "$params.outdir/mush/${population}", mode: 'copy'
-//
-//   input:
-//   tuple population, 'ksf.tsv' from ksfs_total_ch_7.filter { it[0] != 'AFR_YRI' }
-//   file 'masked_size.tsv' from masked_size_total_ch
-//   val alpha_0
-//   val alpha_3
-//   val alpha_ridge
-//   val beta_0
-//   val beta_1
-//   val beta_ridge
-//   val beta_rank
-//   val ref_pop
-//   file 'dat.ref.pkl' from mush_ref_ch
-//   val folded
-//   val eta
-//
-//   output:
-//   file 'dat.pkl' into mush_ch
-//
-//   script:
-//   template 'infer.py'
-// }
-//
-// // same as previous two, but folded
+process mush {
+
+  executor 'sge'
+  memory '500 MB'
+  time '1d'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/mush/${population}", mode: 'copy'
+
+  input:
+  tuple population, 'ksf.tsv' from ksfs_total_ch_7.filter { it[0] != 'AFR_YRI' }
+  file 'masked_size.tsv' from masked_size_total_ch
+  val k_eta1
+  val lambda_eta1
+  val k_eta2
+  val lambda_eta2
+  val alpha_ridge
+  val k_mu1
+  val lambda_mu1
+  val k_mu2
+  val lambda_mu2
+  val beta_ridge
+  val beta_rank
+  val ref_pop
+  file 'dat.ref.pkl' from mush_ref_ch
+  val folded
+  val eta
+
+  output:
+  file 'dat.pkl' into mush_ch
+
+  script:
+  template 'infer.py'
+}
+
+// same as previous two, but folded
 // alpha_ridge = 1e-4
 // beta_ridge = 1e-4
 // ref_pop = 'False'
-// folded = 'True'
-// process mush_ref_folded {
-//
-//   executor 'sge'
-//   memory '500 MB'
-//   time '1d'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//   publishDir "$params.outdir/mush_folded/${population}", mode: 'copy'
-//
-//   input:
-//   tuple population, 'ksf.tsv' from ksfs_total_ch_8.first { it[0] == 'AFR_YRI' }
-//   file 'masked_size.tsv' from masked_size_total_ch
-//   val alpha_0
-//   val alpha_3
-//   val alpha_ridge
-//   val beta_0
-//   val beta_1
-//   val beta_ridge
-//   val beta_rank
-//   val ref_pop
-//   val folded
-//   val eta
-//
-//   output:
-//   file 'dat.pkl' into mush_ref_folded_ch
-//
-//   script:
-//   template 'infer.py'
-// }
-//
+folded = 'True'
+process mush_ref_folded {
+
+  executor 'sge'
+  memory '500 MB'
+  time '1d'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/mush_folded/${population}", mode: 'copy'
+
+  input:
+  tuple population, 'ksf.tsv' from ksfs_total_ch_8.first { it[0] == 'AFR_YRI' }
+  file 'masked_size.tsv' from masked_size_total_ch
+  val k_eta1
+  val lambda_eta1
+  val k_eta2
+  val lambda_eta2
+  val alpha_ridge
+  val k_mu1
+  val lambda_mu1
+  val k_mu2
+  val lambda_mu2
+  val beta_ridge
+  val beta_rank
+  val ref_pop
+  val folded
+  val eta
+
+  output:
+  file 'dat.pkl' into mush_ref_folded_ch
+
+  script:
+  template 'infer.py'
+}
+
 // alpha_ridge = 1e4
 // beta_ridge = 1e4
 // ref_pop = 'True'
-// process mush_folded {
-//
-//   executor 'sge'
-//   memory '500 MB'
-//   time '1d'
-//   scratch true
-//   conda "${CONDA_PREFIX}/envs/1KG"
-//   publishDir "$params.outdir/mush_folded/${population}", mode: 'copy'
-//
-//   input:
-//   tuple population, 'ksf.tsv' from ksfs_total_ch_9.filter { it[0] != 'AFR_YRI' }
-//   file 'masked_size.tsv' from masked_size_total_ch
-//   val alpha_0
-//   val alpha_3
-//   val alpha_ridge
-//   val beta_0
-//   val beta_1
-//   val beta_ridge
-//   val beta_rank
-//   val ref_pop
-//   file 'dat.ref.pkl' from mush_ref_folded_ch
-//   val folded
-//   val eta
-//
-//   output:
-//   file 'dat.pkl' into mush_folded_ch
-//
-//   script:
-//   template 'infer.py'
-// }
+process mush_folded {
+
+  executor 'sge'
+  memory '500 MB'
+  time '1d'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/mush_folded/${population}", mode: 'copy'
+
+  input:
+  tuple population, 'ksf.tsv' from ksfs_total_ch_9.filter { it[0] != 'AFR_YRI' }
+  file 'masked_size.tsv' from masked_size_total_ch
+  val k_eta1
+  val lambda_eta1
+  val k_eta2
+  val lambda_eta2
+  val alpha_ridge
+  val k_mu1
+  val lambda_mu1
+  val k_mu2
+  val lambda_mu2
+  val beta_ridge
+  val beta_rank
+  val ref_pop
+  file 'dat.ref.pkl' from mush_ref_folded_ch
+  val folded
+  val eta
+
+  output:
+  file 'dat.pkl' into mush_folded_ch
+
+  script:
+  template 'infer.py'
+}
