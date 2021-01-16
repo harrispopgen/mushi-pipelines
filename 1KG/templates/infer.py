@@ -32,6 +32,13 @@ foo, bar = ksfs.mutation_types.reindex(sorted_triplets)
 ksfs.mutation_types = foo
 ksfs.X = ksfs.X[:, bar]
 
+if ${boot}:
+    from scipy.stats import multinomial
+    p = np.ravel(np.array(ksfs.X, dtype=float))
+    p /= p.sum()
+    n = ksfs.X.sum()
+    ksfs.X = multinomial.rvs(n, p).reshape(ksfs.X.shape)
+
 masked_genome_size = pd.read_csv('masked_size.tsv', sep='\t', header=None,
                                  index_col=0, names=('count',))
 

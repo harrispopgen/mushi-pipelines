@@ -193,7 +193,7 @@ process ksfs_total {
   """
 }
 
-ksfs_total_ch.into { ksfs_total_ch_1; ksfs_total_ch_2; ksfs_total_ch_3; ksfs_total_ch_4; ksfs_total_ch_5; ksfs_total_ch_6; ksfs_total_ch_7; ksfs_total_ch_8; ksfs_total_ch_9 }
+ksfs_total_ch.into { ksfs_total_ch_1; ksfs_total_ch_2; ksfs_total_ch_3; ksfs_total_ch_4; ksfs_total_ch_5; ksfs_total_ch_6; ksfs_total_ch_7; ksfs_total_ch_8; ksfs_total_ch_9; ksfs_total_ch_10 }
 
 // trend orders and penalty strengths
 k_eta1 = [0, 1, 2, 3]
@@ -214,6 +214,8 @@ beta_rank = 0
 ref_pop = 'False'
 folded = 'False'
 eta = 'False'
+
+boot = 'False'
 
 process eta_sweep {
 
@@ -241,6 +243,7 @@ process eta_sweep {
   val ref_pop
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into eta_sweep_ch
@@ -285,6 +288,7 @@ process mu_sweep {
   val ref_pop
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into mu_sweep_ch
@@ -298,6 +302,46 @@ lambda_mu1 = 1e2
 k_mu2 = 'None'
 lambda_mu2 = 'None'
 
+boot = 'True'
+
+process bootstrap {
+
+  executor 'sge'
+  memory '500 MB'
+  time '1d'
+  scratch true
+  conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/bootstrap/${bootstrap}", mode: 'copy'
+
+  input:
+  tuple population, 'ksf.tsv' from ksfs_total_ch_3.filter { it[0] == 'EUR_CEU' }
+  file 'masked_size.tsv' from masked_size_total_ch
+  each bootstrap from 1..20
+  val k_eta1
+  val lambda_eta1
+  val k_eta2
+  val lambda_eta2
+  val alpha_ridge
+  val k_mu1
+  val lambda_mu1
+  val k_mu2
+  val lambda_mu2
+  val beta_ridge
+  val beta_rank
+  val ref_pop
+  val folded
+  val eta
+  val boot
+
+  output:
+  file 'dat.pkl' into bootstrap_ch
+
+  script:
+  template 'infer.py'
+}
+
+boot = 'False'
+
 process europulse {
 
   executor 'sge'
@@ -308,7 +352,7 @@ process europulse {
   publishDir "$params.outdir/europulse_mushi/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_3.filter { it[0].split('_')[0] == 'EUR' }
+  tuple population, 'ksf.tsv' from ksfs_total_ch_4.filter { it[0].split('_')[0] == 'EUR' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -324,6 +368,7 @@ process europulse {
   val ref_pop
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into europulse_ch
@@ -416,7 +461,7 @@ process europulse_Tennessen {
   publishDir "$params.outdir/europulse_Tennessen/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_4.filter { it[0].split('_')[0] == 'EUR' }
+  tuple population, 'ksf.tsv' from ksfs_total_ch_5.filter { it[0].split('_')[0] == 'EUR' }
   file 'masked_size.tsv' from masked_size_total_ch
   file 'eta.pkl' from eta_Tennessen_ch
   val k_eta1
@@ -433,6 +478,7 @@ process europulse_Tennessen {
   val ref_pop
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into europulse_Tennessen_ch
@@ -441,7 +487,7 @@ process europulse_Tennessen {
   template 'infer.py'
 }
 
-ksfs_total_ch_EUR = ksfs_total_ch_5.filter { it[0].split('_')[0] == 'EUR' }
+ksfs_total_ch_EUR = ksfs_total_ch_6.filter { it[0].split('_')[0] == 'EUR' }
 
 process europulse_Relate {
 
@@ -469,6 +515,7 @@ process europulse_Relate {
   val ref_pop
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into europulse_Relate_ch
@@ -480,12 +527,11 @@ process europulse_Relate {
 eta = 'False'
 
 // same as above, but all populations, ancestral fusion to YRI, rank penalty, and softer mutation spectrum history
-k_mu1 = 0
-lambda_mu1 = 5e1
-k_mu2 = 3
-lambda_mu2 = 1e-2
+k_mu1 = 3
+lambda_mu1 = 1e1
+k_mu2 = 'None'
+lambda_mu2 = 'None'
 
-// NOTE: experimenting with no rank penalty!!!!!!
 beta_rank = 1e2
 
 process mush_ref {
@@ -498,7 +544,7 @@ process mush_ref {
   publishDir "$params.outdir/mush/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_6.first { it[0] == 'AFR_YRI' }
+  tuple population, 'ksf.tsv' from ksfs_total_ch_7.first { it[0] == 'AFR_YRI' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -514,6 +560,7 @@ process mush_ref {
   val ref_pop
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into mush_ref_ch
@@ -522,10 +569,9 @@ process mush_ref {
   template 'infer.py'
 }
 
-// NOTE: experimenting with no fusion!!!!!!
-// alpha_ridge = 1e4
-// beta_ridge = 1e4
-// ref_pop = 'True'
+alpha_ridge = 1e4
+beta_ridge = 1e4
+ref_pop = 'True'
 process mush {
 
   executor 'sge'
@@ -536,7 +582,7 @@ process mush {
   publishDir "$params.outdir/mush/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_7.filter { it[0] != 'AFR_YRI' }
+  tuple population, 'ksf.tsv' from ksfs_total_ch_8.filter { it[0] != 'AFR_YRI' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -550,9 +596,10 @@ process mush {
   val beta_ridge
   val beta_rank
   val ref_pop
-  // file 'dat.ref.pkl' from mush_ref_ch
+  file 'dat.ref.pkl' from mush_ref_ch
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into mush_ch
@@ -562,9 +609,9 @@ process mush {
 }
 
 // same as previous two, but folded
-// alpha_ridge = 1e-4
-// beta_ridge = 1e-4
-// ref_pop = 'False'
+alpha_ridge = 1e-4
+beta_ridge = 1e-4
+ref_pop = 'False'
 folded = 'True'
 process mush_ref_folded {
 
@@ -576,7 +623,7 @@ process mush_ref_folded {
   publishDir "$params.outdir/mush_folded/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_8.first { it[0] == 'AFR_YRI' }
+  tuple population, 'ksf.tsv' from ksfs_total_ch_9.first { it[0] == 'AFR_YRI' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -592,6 +639,7 @@ process mush_ref_folded {
   val ref_pop
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into mush_ref_folded_ch
@@ -600,9 +648,9 @@ process mush_ref_folded {
   template 'infer.py'
 }
 
-// alpha_ridge = 1e4
-// beta_ridge = 1e4
-// ref_pop = 'True'
+alpha_ridge = 1e4
+beta_ridge = 1e4
+ref_pop = 'True'
 process mush_folded {
 
   executor 'sge'
@@ -613,7 +661,7 @@ process mush_folded {
   publishDir "$params.outdir/mush_folded/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_9.filter { it[0] != 'AFR_YRI' }
+  tuple population, 'ksf.tsv' from ksfs_total_ch_10.filter { it[0] != 'AFR_YRI' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -627,9 +675,10 @@ process mush_folded {
   val beta_ridge
   val beta_rank
   val ref_pop
-  // file 'dat.ref.pkl' from mush_ref_folded_ch
+  file 'dat.ref.pkl' from mush_ref_folded_ch
   val folded
   val eta
+  val boot
 
   output:
   file 'dat.pkl' into mush_folded_ch
