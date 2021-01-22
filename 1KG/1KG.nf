@@ -16,6 +16,9 @@ params.trend_max_iter = 100
 
 chromosomes = 1..22
 
+// misid rate used for Tennessen and Relate demographic models
+params.misid_r = 0.03
+
 vcf_ch = Channel
   .of (chromosomes)
   .map { [it,
@@ -175,6 +178,7 @@ process ksfs_total {
   time '10m'
   scratch true
   conda "${CONDA_PREFIX}/envs/1KG"
+  publishDir "$params.outdir/ksfs/${pop}", mode: 'copy'
 
   input:
   tuple pop, 'ksfs' from ksfs_ch.groupTuple(size: chromosomes.size())
@@ -254,8 +258,8 @@ process eta_sweep {
 
 k_eta1 = 0
 lambda_eta1 = 1e2
-k_eta2 = 2
-lambda_eta2 = 1e-2
+k_eta2 = 3
+lambda_eta2 = 1e0
 
 k_mu1 = [0, 1, 2, 3]
 lambda_mu1 = [0] + (0..4).by(0.25).collect { 10**it }
@@ -527,10 +531,10 @@ process europulse_Relate {
 eta = 'False'
 
 // same as above, but all populations, ancestral fusion to YRI, rank penalty, and softer mutation spectrum history
-k_mu1 = 3
-lambda_mu1 = 1e1
-k_mu2 = 'None'
-lambda_mu2 = 'None'
+k_mu1 = 0
+lambda_mu1 = 1e2
+k_mu2 = 3
+lambda_mu2 = 1e1
 
 beta_rank = 1e2
 

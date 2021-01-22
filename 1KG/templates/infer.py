@@ -10,10 +10,8 @@ ksfs = mushi.kSFS(file='ksf.tsv')
 # pre-specified eta
 if ${eta}:
     eta = pickle.load(open('eta.pkl', 'rb'))
-    change_points = eta.change_points
 else:
     eta = None
-    change_points = np.logspace(np.log10(1), np.log10(200000), 200)
 
 # reference eta for ancestral fusion
 if ${ref_pop}:
@@ -24,13 +22,14 @@ else:
     eta_ref = None
     mu_ref = None
 
-# sorts the columns of the ksfs
+# sorts the columns of the ksfs (and other relevant attributes)
 sorted_triplets = [f'{a5}{a}{a3}>{a5}{d}{a3}' for a in 'AC'
                    for d in 'ACGT' if d != a
                    for a5 in 'ACGT' for a3 in 'ACGT']
 foo, bar = ksfs.mutation_types.reindex(sorted_triplets)
 ksfs.mutation_types = foo
 ksfs.X = ksfs.X[:, bar]
+ksfs.AM_mut = ksfs.AM_mut[bar, :][:, bar]
 
 if ${boot}:
     from scipy.stats import multinomial
@@ -54,6 +53,7 @@ else:
     alpha_trend = ((${k_eta1}, ${lambda_eta1}), (${k_eta2}, ${lambda_eta2}))
 
 dat = []
+
 if eta is None:
     ksfs.infer_eta(mu0,
                    *alpha_trend,
@@ -68,19 +68,24 @@ if eta is None:
 else:
     ksfs.set_eta(eta)
     ksfs.mu0 = mu0
+    ksfs.r = ${params.misid_r}
 
-
-if ${k_mu2} is None:
-    beta_trend = ((${k_mu1}, ${lambda_mu1}),)
+if ${folded}:
+    beta_trend = None
 else:
-    beta_trend = ((${k_mu1}, ${lambda_mu1}), (${k_mu2}, ${lambda_mu2}))
+    if ${k_mu2} is None:
+        beta_trend = ((${k_mu1}, ${lambda_mu1}),)
+    else:
+        beta_trend = ((${k_mu1}, ${lambda_mu1}), (${k_mu2}, ${lambda_mu2}))
 
-ksfs.infer_mush(*beta_trend,
-                ridge_penalty=${beta_ridge},
-                mu_ref=mu_ref,
-                loss='prf',
-                trend_kwargs=trend_kwargs,
-                **convergence_params, verbose=True)
+    ksfs.infer_mush(*beta_trend,
+                    ridge_penalty=${beta_ridge},
+                    rank_penalty=${beta_rank},
+                    mu_ref=mu_ref,
+                    loss='prf',
+                    trend_kwargs=trend_kwargs,
+                    **convergence_params, verbose=True)
+
 dat += [beta_trend, ksfs, '${population}']
 
 pickle.dump(dat, open('dat.pkl', 'wb'))
