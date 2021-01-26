@@ -130,7 +130,7 @@ dmypy.json
 
 # nextflow builds
 */work
-*/output
+*/output*
 */.nextflow*
 */report.html*
 */dag.html*

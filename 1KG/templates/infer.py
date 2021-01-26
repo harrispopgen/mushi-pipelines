@@ -5,7 +5,7 @@ import mushi
 import pandas as pd
 import numpy as np
 
-ksfs = mushi.kSFS(file='ksf.tsv')
+ksfs = mushi.kSFS(file='ksfs.tsv')
 
 # pre-specified eta
 if ${eta}:
@@ -30,6 +30,20 @@ foo, bar = ksfs.mutation_types.reindex(sorted_triplets)
 ksfs.mutation_types = foo
 ksfs.X = ksfs.X[:, bar]
 ksfs.AM_mut = ksfs.AM_mut[bar, :][:, bar]
+
+# TCC>TTC and GAA>GGA only
+if ${tcc}:
+  idx = ksfs.mutation_types.get_loc('TCC>TTC')
+  idx_rev = ksfs.mutation_types.get_loc('GAA>GGA')
+
+  X = np.zeros((ksfs.X.shape[0], 3))
+  X[:, 0] = ksfs.X[:, idx]
+  X[:, 1] = ksfs.X[:, idx_rev]
+  X[:, 2] = ksfs.X.sum(1) - X[:, 0] - X[:, 1]
+
+  mutation_types = ['TCC>TTC', 'GAA>GGA', None]
+
+  ksfs = mushi.kSFS(X=X, mutation_types=mutation_types)
 
 if ${boot}:
     from scipy.stats import multinomial
@@ -67,8 +81,7 @@ if eta is None:
     dat.append(alpha_trend)
 else:
     ksfs.set_eta(eta)
-    ksfs.mu0 = mu0
-    ksfs.r = ${params.misid_r}
+    ksfs.infer_misid(mu0, verbose=True)
 
 if ${folded}:
     beta_trend = None
