@@ -1,29 +1,34 @@
 #!/usr/bin/env nextflow
 
-params.vcf_dir = "ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20181203_biallelic_SNV/"
+// params.vcf_dir = "ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20181203_biallelic_SNV/"
+params.vcf_dir = "/net/harris/vol1/data/30x1KG/"
 params.mask = "ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/working/20160622_genome_mask_GRCh38/StrictMask/20160622.allChr.mask.bed"
 params.ancestor = "ftp://ftp.ensembl.org/pub/release-100/fasta/ancestral_alleles/homo_sapiens_ancestor_GRCh38.tar.gz"
 params.samples = "ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel"
-params.outdir = "output"
+// params.outdir = "output_phase3"
+params.outdir = "output_30x"
 params.k = 3
 
 params.mut_rate = 1.25e-8
 
 params.pts = 200
 params.ta = 200000
-params.max_iter = 1000
-params.trend_max_iter = 100
+params.max_iter = 500
+params.trend_max_iter = 50
 
 chromosomes = 1..22
 
-// misid rate used for Tennessen and Relate demographic models
-params.misid_r = 0.03
+// vcf_ch = Channel
+//   .of (chromosomes)
+//   .map { [it,
+//           file(params.vcf_dir + "ALL.chr${it}.shapeit2_integrated_v1a.GRCh38.20181129.phased.vcf.gz"),
+//           file(params.vcf_dir + "ALL.chr${it}.shapeit2_integrated_v1a.GRCh38.20181129.phased.vcf.gz.tbi")] }
 
 vcf_ch = Channel
   .of (chromosomes)
   .map { [it,
-          file(params.vcf_dir + "ALL.chr${it}.shapeit2_integrated_v1a.GRCh38.20181129.phased.vcf.gz"),
-          file(params.vcf_dir + "ALL.chr${it}.shapeit2_integrated_v1a.GRCh38.20181129.phased.vcf.gz.tbi")] }
+          file(params.vcf_dir + "CCDG_13607_B01_GRM_WGS_2019-02-19_chr${it}.recalibrated_variants.vcf.gz"),
+          file(params.vcf_dir + "CCDG_13607_B01_GRM_WGS_2019-02-19_chr${it}.recalibrated_variants.vcf.gz.tbi")] }
 
 process mask {
 
@@ -119,7 +124,7 @@ process mutation_types {
 
   executor 'sge'
   memory '500 MB'
-  time '1d'
+  time '2d'
   scratch true
   conda "${CONDA_PREFIX}/envs/1KG"
 
@@ -133,7 +138,8 @@ process mutation_types {
 
   """
   # NOTE: sample NA18498 is missing in hg38 release of low coverage data, see https://www.biorxiv.org/content/10.1101/600254v1
-  tail -n +2 integrated_call_samples.tsv | cut -f1 | grep -v NA18498 > all_samples.txt
+  # tail -n +2 integrated_call_samples.tsv | cut -f1 | grep -v NA18498 > all_samples.txt
+  tail -n +2 integrated_call_samples.tsv | cut -f1 > all_samples.txt
   bcftools view -S all_samples.txt -c 1:minor -R mask.bed -m2 -M2 -v snps -f PASS -Ou snps.vcf.gz | bcftools view -g ^miss -Ou | mutyper variants ancestor.fa - --strict --k ${k} | bcftools convert -Oz -o mutation_types.vcf.gz
   """
 }
@@ -165,7 +171,8 @@ process ksfs {
 
   """
   # NOTE: sample NA18498 is missing in hg38 release of low coverage data, see https://www.biorxiv.org/content/10.1101/600254v1
-  grep ${pop.split('_')[1]} integrated_call_samples.tsv | cut -f1 | grep -v NA18498 > samples.txt
+  # grep ${pop.split('_')[1]} integrated_call_samples.tsv | cut -f1 | grep -v NA18498 > samples.txt
+  grep ${pop.split('_')[1]} integrated_call_samples.tsv | cut -f1 > samples.txt
   bcftools view -S samples.txt -c 1:minor -G mutation_types.vcf.gz | mutyper ksfs - > ksfs.tsv
   """
 }
@@ -208,9 +215,9 @@ lambda_eta2 = 'None'
 alpha_ridge = 1e-4
 
 k_mu1 = 0
-lambda_mu1 = 1e2
-k_mu2 = 'None'
-lambda_mu2 = 'None'
+lambda_mu1 = 5e1
+k_mu2 = 3
+lambda_mu2 = 1e-4
 
 beta_ridge = 1e-4
 beta_rank = 0
@@ -220,6 +227,7 @@ folded = 'False'
 eta = 'False'
 
 boot = 'False'
+tcc = 'True'
 
 process eta_sweep {
 
@@ -231,7 +239,7 @@ process eta_sweep {
   publishDir "$params.outdir/eta_sweep/${k_eta1}_${lambda_eta1}/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_1.filter { it[0] == 'EUR_CEU' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_1.filter { it[0] == 'EUR_CEU' }
   file 'masked_size.tsv' from masked_size_total_ch
   each k_eta1 from k_eta1
   each lambda_eta1 from lambda_eta1
@@ -248,6 +256,7 @@ process eta_sweep {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into eta_sweep_ch
@@ -257,14 +266,12 @@ process eta_sweep {
 }
 
 k_eta1 = 0
-lambda_eta1 = 1e2
+lambda_eta1 = 4e2
 k_eta2 = 3
-lambda_eta2 = 1e0
+lambda_eta2 = 1e-1
 
 k_mu1 = [0, 1, 2, 3]
 lambda_mu1 = [0] + (0..4).by(0.25).collect { 10**it }
-k_mu2 = 'None'
-lambda_mu2 = 'None'
 
 process mu_sweep {
 
@@ -276,7 +283,7 @@ process mu_sweep {
   publishDir "$params.outdir/mu_sweep/${k_mu1}_${lambda_mu1}/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_2.filter { it[0] == 'EUR_CEU' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_2.filter { it[0] == 'EUR_CEU' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -293,6 +300,7 @@ process mu_sweep {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into mu_sweep_ch
@@ -302,9 +310,7 @@ process mu_sweep {
 }
 
 k_mu1 = 0
-lambda_mu1 = 1e2
-k_mu2 = 'None'
-lambda_mu2 = 'None'
+lambda_mu1 = 5e1
 
 boot = 'True'
 
@@ -318,7 +324,7 @@ process bootstrap {
   publishDir "$params.outdir/bootstrap/${bootstrap}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_3.filter { it[0] == 'EUR_CEU' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_3.filter { it[0] == 'EUR_CEU' }
   file 'masked_size.tsv' from masked_size_total_ch
   each bootstrap from 1..20
   val k_eta1
@@ -336,6 +342,7 @@ process bootstrap {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into bootstrap_ch
@@ -356,7 +363,7 @@ process europulse {
   publishDir "$params.outdir/europulse_mushi/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_4.filter { it[0].split('_')[0] == 'EUR' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_4.filter { it[0].split('_')[0] == 'EUR' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -373,6 +380,7 @@ process europulse {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into europulse_ch
@@ -455,6 +463,10 @@ process eta_Relate {
 
 eta = 'True'
 
+// more penalty for Tennessen and Relate to get closer to pulse shape
+k_mu1 = 0
+lambda_mu1 = 1e2
+
 process europulse_Tennessen {
 
   executor 'sge'
@@ -465,7 +477,7 @@ process europulse_Tennessen {
   publishDir "$params.outdir/europulse_Tennessen/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_5.filter { it[0].split('_')[0] == 'EUR' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_5.filter { it[0].split('_')[0] == 'EUR' }
   file 'masked_size.tsv' from masked_size_total_ch
   file 'eta.pkl' from eta_Tennessen_ch
   val k_eta1
@@ -483,6 +495,7 @@ process europulse_Tennessen {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into europulse_Tennessen_ch
@@ -503,7 +516,7 @@ process europulse_Relate {
   publishDir "$params.outdir/europulse_Relate/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv', 'eta.pkl' from ksfs_total_ch_EUR.join(eta_Relate_ch)
+  tuple population, 'ksfs.tsv', 'eta.pkl' from ksfs_total_ch_EUR.join(eta_Relate_ch)
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -520,6 +533,7 @@ process europulse_Relate {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into europulse_Relate_ch
@@ -529,12 +543,13 @@ process europulse_Relate {
 }
 
 eta = 'False'
+tcc = 'False'
 
 // same as above, but all populations, ancestral fusion to YRI, rank penalty, and softer mutation spectrum history
 k_mu1 = 0
-lambda_mu1 = 1e2
+lambda_mu1 = 2e2
 k_mu2 = 3
-lambda_mu2 = 1e1
+lambda_mu2 = 1e0
 
 beta_rank = 1e2
 
@@ -548,7 +563,7 @@ process mush_ref {
   publishDir "$params.outdir/mush/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_7.first { it[0] == 'AFR_YRI' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_7.first { it[0] == 'AFR_YRI' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -565,6 +580,7 @@ process mush_ref {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into mush_ref_ch
@@ -573,8 +589,8 @@ process mush_ref {
   template 'infer.py'
 }
 
-alpha_ridge = 1e4
-beta_ridge = 1e4
+alpha_ridge = 1e5
+beta_ridge = 1e2
 ref_pop = 'True'
 process mush {
 
@@ -586,7 +602,7 @@ process mush {
   publishDir "$params.outdir/mush/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_8.filter { it[0] != 'AFR_YRI' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_8.filter { it[0] != 'AFR_YRI' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -604,6 +620,7 @@ process mush {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into mush_ch
@@ -627,7 +644,7 @@ process mush_ref_folded {
   publishDir "$params.outdir/mush_folded/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_9.first { it[0] == 'AFR_YRI' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_9.first { it[0] == 'AFR_YRI' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -644,6 +661,7 @@ process mush_ref_folded {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into mush_ref_folded_ch
@@ -653,7 +671,7 @@ process mush_ref_folded {
 }
 
 alpha_ridge = 1e4
-beta_ridge = 1e4
+beta_ridge = 1e2
 ref_pop = 'True'
 process mush_folded {
 
@@ -665,7 +683,7 @@ process mush_folded {
   publishDir "$params.outdir/mush_folded/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksf.tsv' from ksfs_total_ch_10.filter { it[0] != 'AFR_YRI' }
+  tuple population, 'ksfs.tsv' from ksfs_total_ch_10.filter { it[0] != 'AFR_YRI' }
   file 'masked_size.tsv' from masked_size_total_ch
   val k_eta1
   val lambda_eta1
@@ -683,6 +701,7 @@ process mush_folded {
   val folded
   val eta
   val boot
+  val tcc
 
   output:
   file 'dat.pkl' into mush_folded_ch
