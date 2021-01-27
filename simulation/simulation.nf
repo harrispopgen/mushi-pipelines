@@ -13,10 +13,10 @@ process histories {
 
   executor 'sge'
   memory '1 GB'
-  time '1m'
+  time '10m'
   // scratch true
   conda "${CONDA_PREFIX}/envs/simulation"
-  publishDir "$params.outdir", mode: 'copy'
+  publishDir "$params.outdir/histories", mode: 'copy'
 
   output:
   tuple 'eta.pkl', 'mu.pkl' into histories_ch
@@ -51,31 +51,27 @@ process histories {
 
   pickle.dump(eta, open('eta.pkl', 'wb'))
 
-
   # Mutation rate history mu(t)
   # A 96 dimensional history with a mixture of two latent signature: constant and pulse.
+  # we aggregate all the other mutation types into one None type
 
   flat = np.ones_like(t)
   pulse = expit(.1 * (t - 100)) - expit(.01 * (t - 2000))
   ramp = expit(-.01 * (t - 100))
-  n_mutation_types = 96
-  Z = np.zeros((len(t), n_mutation_types))
+  Z = np.zeros((len(t), 3))
   np.random.seed(0)
 
   Z[:, 0] = 1 * flat + .5 * pulse
   Z[:, 1] = 0.5 * flat + .4 * ramp
+  Z[:, 2] = 94 * flat
 
-  for col in range(2, n_mutation_types):
-      scale = np.random.lognormal(-.2, .3)
-      pulse_weight = 5 if col == 0 else 0
-      Z[:, col] = scale * flat
+  mutation_types = ['TCC>TTC', 'GAA>GGA', None]
 
-  mu = mushi.mu(change_points, Z)
+  mu = mushi.mu(change_points, Z, mutation_types)
 
   plt.figure(figsize=(4, 4))
-  mu.plot(range(2, n_mutation_types), alpha=0.1, lw=2, c='C0', clr=True)
-  mu.plot((0,), alpha=0.75, lw=3, c='C1', clr=True)
-  mu.plot((1,), alpha=0.75, lw=3, c='C2', clr=True)
+  mu.plot(('TCC>TTC',), alpha=0.75, lw=3, c='C0')
+  mu.plot(('GAA>GGA',), alpha=0.75, lw=3, c='C1')
   plt.savefig('mu.pdf')
 
   pickle.dump(mu, open('mu.pkl', 'wb'))
@@ -89,7 +85,7 @@ process ksfs {
   time '1d'
   // scratch true
   conda "${CONDA_PREFIX}/envs/simulation"
-  publishDir "$params.outdir", pattern: '{*.pdf,*.txt}', mode: 'copy'
+  publishDir "$params.outdir/ksfs", mode: 'copy'
 
   input:
   tuple 'eta.pkl', 'mu.pkl' from histories_ch
@@ -107,6 +103,7 @@ process ksfs {
   import stdpopsim
   import msprime
   import numpy as np
+  import jax.numpy as jnp
   from matplotlib import pyplot as plt
   from numpy.random import binomial
 
@@ -158,9 +155,9 @@ process ksfs {
   # assume first two mutation types are misidentification partners
   X[:, 0] = X[:, 0] - X_misid[:, 0] + X_misid[::-1, 1]
   X[:, 1] = X[:, 1] - X_misid[:, 1] + X_misid[::-1, 0]
-  X[:, 2:] = X[:, 2:] - X_misid[:, 2:] + X_misid[::-1, 2:]
+  X[:, 2] = X[:, 2] - X_misid[:, 2] + X_misid[::-1, 2]
 
-  ksfs = mushi.kSFS(X=X)
+  ksfs = mushi.kSFS(X=jnp.array(X), mutation_types=mu.mutation_types)
 
 
   # Plot SFS and k-SFS
@@ -174,9 +171,8 @@ process ksfs {
   plt.savefig('sfs.pdf')
 
   plt.figure(figsize=(4, 3))
-  ksfs.plot(range(2, mu.Z.shape[1]), clr=True, kwargs=dict(alpha=0.1, ls='', marker='.', c='C0'))
-  ksfs.plot((0,), clr=True, kwargs=dict(alpha=0.75, ls='', marker='o', c='C1'))
-  ksfs.plot((1,), clr=True, kwargs=dict(alpha=0.75, ls='', marker='o', c='C2'))
+  ksfs.plot(('TCC>TTC',), kwargs=dict(alpha=0.75, ls='', marker='o', c='C0'))
+  ksfs.plot(('GAA>GGA',), kwargs=dict(alpha=0.75, ls='', marker='o', c='C1'))
   plt.savefig('ksfs.pdf')
 
   pickle.dump(ksfs, open('ksfs.pkl', 'wb'))
@@ -202,11 +198,11 @@ process ksfs {
 }
 
 alpha_0 = [0] + (0..3.5).by(0.5).collect{ 10**it }
-alpha_1 = [0] + (0..4).by(0.5).collect{ 10**it }
+alpha_1 = [0] + (-1..1.75).by(0.25).collect{ 10**it }
 alpha_ridge = 1e-4
 
 beta_0 = 1e2
-beta_1 = 1e2
+beta_1 = 10**0.5
 beta_ridge = 1e-4
 
 folded = 'False'
@@ -241,11 +237,11 @@ process eta_sweep {
 }
 
 alpha_0 = 1e2
-alpha_1 = 1e3
+alpha_1 = 10**0.75
 alpha_ridge = 1e-4
 
 beta_0 = [0] + (0..2.5).by(0.5).collect{ 10**it }
-beta_1 = [0] + (0..3).by(0.5).collect{ 10**it }
+beta_1 = [0] + (-1..1.5).by(0.25).collect{ 10**it }
 beta_ridge = 1e-4
 
 process mu_sweep {
@@ -278,7 +274,7 @@ process mu_sweep {
 
 
 beta_0 = 1e2
-beta_1 = 1e2
+beta_1 = 10**0.5
 beta_ridge = 1e-4
 
 folded = ['False', 'True']

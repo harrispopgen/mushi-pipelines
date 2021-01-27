@@ -2,10 +2,12 @@
 
 import pickle
 import mushi
-import numpy as np
 
 # Load ksfs and true histories
 ksfs = pickle.load(open('ksfs.pkl', 'rb'))
+# hack because pickle doesn't retain jax types :(
+ksfs = mushi.kSFS(X=ksfs.X, mutation_types=ksfs.mutation_types)
+
 mu0 = pickle.load(open('mu0.pkl', 'rb'))
 
 convergence_params = dict(tol=0, max_iter=${params.max_iter})
@@ -23,10 +25,13 @@ ksfs.infer_eta(mu0,
                trend_kwargs=trend_kwargs,
                **convergence_params, verbose=True)
 
-ksfs.infer_mush(*beta_trend,
-                ridge_penalty=${beta_ridge},
-                loss='prf',
-                trend_kwargs=trend_kwargs,
-                **convergence_params, verbose=True)
+if ${folded}:
+    beta_trend = None
+else:
+    ksfs.infer_mush(*beta_trend,
+                    ridge_penalty=${beta_ridge},
+                    loss='prf',
+                    trend_kwargs=trend_kwargs,
+                    **convergence_params, verbose=True)
 
 pickle.dump([alpha_trend, beta_trend, ksfs], open('dat.pkl', 'wb'))
