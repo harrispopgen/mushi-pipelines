@@ -549,9 +549,9 @@ tcc = 'False'
 k_mu1 = 0
 lambda_mu1 = 2e2
 k_mu2 = 3
-lambda_mu2 = 1e0
+lambda_mu2 = 2e0
 
-beta_rank = 1e2
+beta_rank = 2e2
 
 process mush_ref {
 
@@ -589,9 +589,9 @@ process mush_ref {
   template 'infer.py'
 }
 
-alpha_ridge = 1e5
-beta_ridge = 1e2
-ref_pop = 'True'
+// alpha_ridge = 1e5
+// beta_ridge = 2e3
+// ref_pop = 'True'
 process mush {
 
   executor 'sge'
@@ -616,7 +616,7 @@ process mush {
   val beta_ridge
   val beta_rank
   val ref_pop
-  file 'dat.ref.pkl' from mush_ref_ch
+  // file 'dat.ref.pkl' from mush_ref_ch
   val folded
   val eta
   val boot
@@ -670,9 +670,9 @@ process mush_ref_folded {
   template 'infer.py'
 }
 
-alpha_ridge = 1e4
-beta_ridge = 1e2
-ref_pop = 'True'
+// alpha_ridge = 1e5
+// beta_ridge = 2e3
+// ref_pop = 'True'
 process mush_folded {
 
   executor 'sge'
@@ -697,7 +697,7 @@ process mush_folded {
   val beta_ridge
   val beta_rank
   val ref_pop
-  file 'dat.ref.pkl' from mush_ref_folded_ch
+  // file 'dat.ref.pkl' from mush_ref_folded_ch
   val folded
   val eta
   val boot
