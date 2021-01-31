@@ -5,9 +5,9 @@ params.outdir = "output"
 params.pts = 100
 params.ta = 100000
 params.n_haplotypes = 200
-params.max_iter = 300
+params.max_iter = 500
 params.r = 0.01
-params.trend_max_iter = 20
+params.trend_max_iter = 50
 
 process histories {
 
@@ -274,7 +274,7 @@ process mu_sweep {
 
 
 beta_0 = 1e2
-beta_1 = 10**0.5
+beta_1 = 0
 beta_ridge = 1e-4
 
 folded = ['False', 'True']
