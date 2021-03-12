@@ -18,6 +18,8 @@ params.trend_max_iter = 50
 
 chromosomes = 1..22
 
+mut_rate_Tennessen = 2.36e-8
+
 // vcf_ch = Channel
 //   .of (chromosomes)
 //   .map { [it,
@@ -389,6 +391,7 @@ process europulse {
   template 'infer.py'
 }
 
+
 process eta_Tennessen {
   executor 'sge'
   memory '100 MB'
@@ -396,8 +399,11 @@ process eta_Tennessen {
   scratch true
   conda "${CONDA_PREFIX}/envs/1KG"
 
+  input:
+  val rescale from Channel.from('False', 'True')
+
   output:
-  file 'eta.pkl' into eta_Tennessen_ch
+  tuple rescale, 'eta.pkl' into eta_Tennessen_ch
 
   """
   #! /usr/bin/env python
@@ -407,13 +413,18 @@ process eta_Tennessen {
   import mushi
   import pickle
 
+  if ${rescale}:
+    scale = ${mut_rate_Tennessen} / ${params.mut_rate}
+  else:
+    scale = 1
+
   species = stdpopsim.get_species("HomSap")
   model = species.get_demographic_model("OutOfAfrica_2T12")
   ddb = model.get_demography_debugger()
   change_points = np.logspace(np.log10(1), np.log10(200000), 200)
   steps = np.concatenate((np.array([0]), change_points))
   eta = mushi.eta(change_points,
-                  1 / ddb.coalescence_rate_trajectory(steps=steps,
+                  scale / ddb.coalescence_rate_trajectory(steps=steps / scale,
                                                       num_samples=[0, 2],
                                                       double_step_validation=False)[0])
   pickle.dump(eta, open('eta.pkl', 'wb'))
@@ -474,12 +485,11 @@ process europulse_Tennessen {
   time '1d'
   scratch true
   conda "${CONDA_PREFIX}/envs/1KG"
-  publishDir "$params.outdir/europulse_Tennessen/${population}", mode: 'copy'
+  publishDir "$params.outdir/europulse_Tennessen_rescale_${rescale}/${population}", mode: 'copy'
 
   input:
-  tuple population, 'ksfs.tsv' from ksfs_total_ch_5.filter { it[0].split('_')[0] == 'EUR' }
+  tuple rescale, 'eta.pkl', population, 'ksfs.tsv' from eta_Tennessen_ch.combine(ksfs_total_ch_5.filter { it[0].split('_')[0] == 'EUR' })
   file 'masked_size.tsv' from masked_size_total_ch
-  file 'eta.pkl' from eta_Tennessen_ch
   val k_eta1
   val lambda_eta1
   val k_eta2
@@ -498,7 +508,7 @@ process europulse_Tennessen {
   val tcc
 
   output:
-  file 'dat.pkl' into europulse_Tennessen_ch
+  tuple rescale, 'dat.pkl' into europulse_Tennessen_ch
 
   script:
   template 'infer.py'
